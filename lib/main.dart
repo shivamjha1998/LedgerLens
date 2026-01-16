@@ -45,12 +45,6 @@ class MyApp extends StatelessWidget {
           ),
           useMaterial3: true,
           appBarTheme: const AppBarTheme(centerTitle: true, elevation: 0),
-          cardTheme: const CardThemeData(
-            elevation: 2,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.all(Radius.circular(12)),
-            ),
-          ),
           floatingActionButtonTheme: const FloatingActionButtonThemeData(
             backgroundColor: Color(0xFF2196F3),
             foregroundColor: Colors.white,

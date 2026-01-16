@@ -9,7 +9,9 @@ class ReceiptData {
 }
 
 class TextRecognizerService {
-  final _textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
+  final _textRecognizer = TextRecognizer(
+    script: TextRecognitionScript.japanese,
+  );
 
   Future<ReceiptData> processImage(String imagePath) async {
     final inputImage = InputImage.fromFilePath(imagePath);
@@ -22,56 +24,90 @@ class TextRecognizerService {
     double? amount;
     DateTime? date;
     String? merchant;
+    bool amountFoundViaKeyword = false;
 
     final lines = recognizedText.text.split('\n');
 
     for (var line in lines) {
-      // Amount detection
-      final amountRegex = RegExp(r'\$?\d{1,5}\.\d{2}');
-      final amountMatch = amountRegex.firstMatch(line);
+      final text = line.trim();
+      if (text.isEmpty) continue;
+
+      // --- Amount Detection ---
+      // Regex for currency: $10.50, ¥1000, 1,000
+      final amountRegex = RegExp(r'[$¥￥]?\s*(\d{1,3}(,\d{3})*(\.\d+)?)\s*[円]?');
+
+      final lowerText = text.toLowerCase();
+      // Keywords
+      final isTotalLine =
+          lowerText.contains('total') ||
+          text.contains('合計') ||
+          text.contains('小計') ||
+          text.contains('お支払');
+
+      final isExcludedLine =
+          lowerText.contains('change') ||
+          lowerText.contains('cash') ||
+          lowerText.contains('tender') ||
+          text.contains('お釣り') ||
+          text.contains('お預かり');
+
+      final amountMatch = amountRegex.firstMatch(text);
       if (amountMatch != null) {
-        final amountString = amountMatch.group(0)?.replaceAll(r'$', '');
-        if (amountString != null) {
-          final val = double.tryParse(amountString);
-          if (val != null) {
-            // Heuristic
-            // Only update if amount is null OR we found "Total" keyword
-            // OR if val is clearly larger (assuming total is largest)
-            // But we must check nullability correctly
-            if (line.toLowerCase().contains('total')) {
-              amount = val;
-            } else if (amount == null) {
-              amount = val;
-            } else if (val > amount) {
+        String rawAmount = amountMatch.group(1)!;
+        rawAmount = rawAmount.replaceAll(',', '');
+        final val = double.tryParse(rawAmount);
+
+        if (val != null) {
+          if (isTotalLine) {
+            amount = val;
+            amountFoundViaKeyword = true;
+          } else if (!amountFoundViaKeyword && !isExcludedLine) {
+            if (amount == null || val > amount) {
               amount = val;
             }
           }
         }
       }
 
-      // Date detection
-      final dateRegex = RegExp(r'\d{1,2}[/-]\d{1,2}[/-]\d{2,4}');
-      final dateMatch = dateRegex.firstMatch(line);
+      // --- Date Detection ---
+      final dateRegex = RegExp(r'(\d{4})[年/-](\d{1,2})[月/-](\d{1,2})[日]?');
+      final usDateRegex = RegExp(r'(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})');
 
-      // We check date == null so we only take the first date found (usually at top)
-      if (dateMatch != null && date == null) {
-        try {
-          final dateStr = dateMatch.group(0)!;
-          final parts = dateStr.split(RegExp(r'[/-]'));
-          if (parts.length == 3) {
-            final month = int.parse(parts[0]);
-            final day = int.parse(parts[1]);
-            final year = int.parse(parts[2]);
-            final fullYear = year < 100 ? 2000 + year : year;
-            date = DateTime(fullYear, month, day);
+      if (date == null) {
+        // Japanese/ISO YYYY-MM-DD
+        final jpMatch = dateRegex.firstMatch(text);
+        if (jpMatch != null) {
+          try {
+            final y = int.parse(jpMatch.group(1)!);
+            final m = int.parse(jpMatch.group(2)!);
+            final d = int.parse(jpMatch.group(3)!);
+            date = DateTime(y, m, d);
+          } catch (_) {}
+        } else {
+          // US/EU MM/DD/YYYY
+          final usMatch = usDateRegex.firstMatch(text);
+          if (usMatch != null) {
+            try {
+              final p1 = int.parse(usMatch.group(1)!);
+              final p2 = int.parse(usMatch.group(2)!);
+              final yRaw = int.parse(usMatch.group(3)!);
+              final y = yRaw < 100 ? 2000 + yRaw : yRaw;
+              if (p1 <= 12 && p2 <= 31) {
+                date = DateTime(y, p1, p2);
+              } else if (p2 <= 12 && p1 <= 31) {
+                date = DateTime(y, p2, p1);
+              }
+            } catch (_) {}
           }
-        } catch (_) {}
+        }
       }
 
-      if (merchant == null && line.trim().isNotEmpty && line.length < 30) {
-        // Skip purely numeric lines for merchant
-        if (!RegExp(r'^\d+$').hasMatch(line.trim())) {
-          merchant = line.trim();
+      // --- Merchant Detection ---
+      if (merchant == null && text.length < 30) {
+        if (!RegExp(r'^[\d,.\s¥￥]+$').hasMatch(text) &&
+            !dateRegex.hasMatch(text) &&
+            !usDateRegex.hasMatch(text)) {
+          merchant = text;
         }
       }
     }
