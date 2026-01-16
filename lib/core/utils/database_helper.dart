@@ -80,6 +80,12 @@ class DatabaseHelper {
         iconCode: 0xea66,
         colorValue: 0xFFE91E63,
       ), // movie, pink
+      const CategoryModel(
+        id: '6',
+        name: 'Others',
+        iconCode: 0xe80b,
+        colorValue: 0xFF2196F3,
+      ), // favorite, blue
     ];
 
     final batch = db.batch();
