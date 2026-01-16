@@ -31,7 +31,7 @@
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/ledger_lens.git
+   git clone git@github.com:shivamjha1998/LedgerLens.git
    cd ledger_lens
    ```
 
